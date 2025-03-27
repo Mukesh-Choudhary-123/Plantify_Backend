@@ -3,13 +3,17 @@ import mongoose, { Schema } from "mongoose";
 const orderSchema = new Schema(
   {
     user: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    seller: { type: Schema.Types.ObjectId, ref: "Seller", required: true }, 
+    seller: { type: Schema.Types.ObjectId, ref: "Seller", required: true },
     items: [
       {
-        product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
+        product: {
+          type: Schema.Types.ObjectId,
+          ref: "Product",
+          required: true,
+        },
         quantity: { type: Number, required: true, min: 1 },
         price: { type: Number, required: true },
-      }
+      },
     ],
     totalAmount: { type: Number, required: true },
     totalItems: { type: Number, required: true },
@@ -21,7 +25,14 @@ const orderSchema = new Schema(
     },
     shippingAddress: { type: Schema.Types.Mixed, required: true },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    indexes: [
+      { seller: 1 }, // Index for seller queries
+      { status: 1 }, // Index for status filtering
+      { createdAt: -1 }, // Index for sorting by date
+    ],
+  }
 );
 
 const Order = mongoose.model("Order", orderSchema);

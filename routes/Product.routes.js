@@ -4,6 +4,7 @@ import {
   deleteProduct,
   editProduct,
   fetchAllProduct,
+  fetchAllProductByCategory,
   fetchProductByID,
   fetchProductBySellerID,
 } from "../controllers/Product.controller.js";
@@ -12,12 +13,13 @@ import userAuthenticated from "../middlewares/UserAuth.js";
 
 const router = express.Router();
 
-router.route("/").get( userAuthenticated ,fetchAllProduct).post( sellerAuthenticated , createProduct);
+router.route("/").get(fetchAllProduct).post(createProduct);
+router.route("/category").get(fetchAllProductByCategory)
 router
   .route("/:id")
   .get(fetchProductByID)
   .put(editProduct)
   .delete(deleteProduct);
-router.route("/:sellerId").get(fetchProductBySellerID);
+router.route("/seller/:sellerId").get(fetchProductBySellerID);
 
 export default router;

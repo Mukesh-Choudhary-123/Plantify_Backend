@@ -5,8 +5,12 @@ import User from "../models/User.js";
 
 export const addToWishlist = async (req, res) => {
   try {
-    const { userId, productId } = req.body;
-
+    
+    const { id} = req.params;
+    const userId = id;
+    const { productId } = req.body;
+    // console.log("U",userId, " ", "P",productId)
+  
     if (!userId || !productId) {
       return res.status(400).json({
         success: false,
@@ -62,7 +66,10 @@ export const addToWishlist = async (req, res) => {
 //#region remove from Wishlist
 export const removeFromWishlist = async (req, res) => {
   try {
-    const { userId, productId } = req.body;
+    const { id} = req.params;
+    const userId = id;
+    const { productId } = req.body;
+    // console.log("U",userId, " ", "P",productId)
 
     if (!userId || !productId) {
       return res.status(400).json({
@@ -117,11 +124,12 @@ export const removeFromWishlist = async (req, res) => {
   }
 };
 
-//#region Fetch Cart for User
+//#region Fetch Wishlist for User
 export const fetchWishlist = async (req, res) => {
   try {
-    const { userId } = req.body;
-
+    const { id } = req.params;
+    const userId = id;
+ 
     if (!userId) {
       return res.status(400).json({
         success: false,
@@ -129,7 +137,13 @@ export const fetchWishlist = async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId).populate("wishlist.product");
+    const user = await User.findById(userId).populate({
+      path: "wishlist",
+      populate: {
+        path: "seller",
+        match: { isApproved: true },  // only include if seller is approved
+      },
+    });
 
     if (!user) {
       return res.status(404).json({
@@ -138,10 +152,12 @@ export const fetchWishlist = async (req, res) => {
       });
     }
 
+    const approvedWishlist = user.wishlist.filter((product) => product.seller);
+
     return res.status(200).json({
       success: true,
       message: "Wishlist fetched successfully.",
-      cart: user.cart,
+      wishlist: approvedWishlist,
     });
   } catch (error) {
     console.error("Error Fetching Wishlist: ", error);

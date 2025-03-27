@@ -1,23 +1,21 @@
 import User from "../models/User.js";
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
+import Seller from "../models/Seller.js";
+import mongoose, { Schema } from "mongoose";
+
 
 //#region Create Order
 export const createOrder = async (req, res) => {
   try {
-    const { userId, sellerId, items, shippingAddress } = req.body;
+    const { id } = req.params;
+    const userId = id;
+    const { items, shippingAddress } = req.body;
 
-    if (
-      !userId ||
-      !sellerId ||
-      !items ||
-      items.length === 0 ||
-      !shippingAddress
-    ) {
+    if (!userId || !items || items.length === 0 || !shippingAddress) {
       return res.status(400).json({
         success: false,
-        message:
-          "All fields (userId, sellerId, items, shippingAddress) are required.",
+        message: "All fields (userId, items, shippingAddress) are required.",
       });
     }
 
@@ -28,47 +26,66 @@ export const createOrder = async (req, res) => {
         .json({ success: false, message: "User not found." });
     }
 
-    let totalAmount = 0;
-    let totalItems = 0;
-    const orderItems = [];
-
-    for (const item of items) {
-      const product = await Product.findById(item.product);
-      if (!product) {
-        return res
-          .status(404)
-          .json({
-            success: false,
-            message: `Product ${item.product} not found.`,
-          });
+    // Group items by sellerId
+    const itemsBySeller = {};
+    items.forEach((item) => {
+      if (!itemsBySeller[item.sellerId]) {
+        itemsBySeller[item.sellerId] = [];
       }
-
-      const price = product.price * item.quantity;
-      totalAmount += price;
-      totalItems += item.quantity;
-
-      orderItems.push({
-        product: item.product,
-        quantity: item.quantity,
-        price: product.price,
-      });
-    }
-
-    const order = new Order({
-      user: userId,
-      seller: sellerId,
-      items: orderItems,
-      totalAmount,
-      totalItems,
-      shippingAddress,
+      itemsBySeller[item.sellerId].push(item);
     });
 
-    await order.save();
+    const orders = [];
+
+    // Create an order for each seller
+    for (const sellerId in itemsBySeller) {
+      let totalAmount = 0;
+      let totalItems = 0;
+      const orderItems = [];
+      const sellerItems = itemsBySeller[sellerId];
+
+      // Process each item for the seller
+      for (const item of sellerItems) {
+        const product = await Product.findById(item.productId);
+        if (!product) {
+          return res.status(404).json({
+            success: false,
+            message: `Product ${item.productId} not found.`,
+          });
+        }
+
+        const price = product.price * item.quantity;
+        totalAmount += price;
+        totalItems += item.quantity;
+
+        orderItems.push({
+          product: item.productId,
+          quantity: item.quantity,
+          price: product.price,
+        });
+      }
+
+      // Create and save the order for the seller
+      const order = new Order({
+        user: userId,
+        seller: sellerId,
+        items: orderItems,
+        totalAmount,
+        totalItems,
+        shippingAddress,
+      });
+      await order.save();
+      orders.push(order);
+    }
+
+    // Clear the user's cart after placing the orders
+    user.cart = [];
+    await user.save();
 
     return res.status(201).json({
       success: true,
-      message: "Order placed successfully.",
-      order,
+      message: "Orders placed successfully.",
+      orders,
     });
   } catch (error) {
     console.error("Error Creating Order:", error);
@@ -83,7 +100,11 @@ export const createOrder = async (req, res) => {
 //#region Update Order
 export const updateOrder = async (req, res) => {
   try {
-    const { orderId, status } = req.body;
+    const { orderId } = req.params;
+    const {  status } = req.body;
+
+    // console.log("orderId: ", orderId)
+    // console.log("status: ",status)
 
     if (!orderId || !status) {
       return res.status(400).json({
@@ -159,15 +180,13 @@ export const filterOrder = async (req, res) => {
 //#region Fetch Orders by UserID
 export const fetchOrderByUserId = async (req, res) => {
   try {
-    const { userId } = req.body;
-
+    const { userId } = req.params;
     if (!userId) {
       return res.status(400).json({
         success: false,
         message: "User ID is required.",
       });
     }
-
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({
@@ -175,13 +194,55 @@ export const fetchOrderByUserId = async (req, res) => {
         message: "User not found.",
       });
     }
-
-    const orders = await Order.find({ user: userId }).populate("items.product");
-
+    
+    const formatProduct = (product) => ({
+      id: product._id, // _id becomes id
+      title: product.title,
+      price: product.price,
+      thumbnail: product.thumbnail,
+      subtitle: product.subtitle,
+    });
+    
+    const formatOrder = (order) => ({
+      id: order._id, 
+      items: order.items.map(item => ({
+        ...item,
+        product: formatProduct(item.product), // apply product formatting
+      })),
+      seller: order.seller,
+      status: order.status,
+      totalAmount: order.totalAmount,
+      totalItems: order.totalItems,
+      user: order.user,
+    });
+    
+    const orders = await Order.find({ user: userId })
+    .sort({ createdAt: -1 }) // sort descending by createdAt
+    .populate("items.product")
+    .lean();
+  
+    
+    const formattedOrders = orders.map(formatOrder);
+    
+    const clientOrders = formattedOrders.map(order => {
+      const product = order.items[0].product;
+      return {
+        id: order.id.toString(), 
+        title: product.title,
+        prices: product.price,   
+        subtitle: product.subtitle,
+        image: product.thumbnail,
+        status: order.status,
+        totalAmount: order.totalAmount,
+        totalItems: order.totalItems,
+      };
+    });
+    
+    // console.log("clientOrders :- ", clientOrders);
     return res.status(200).json({
       success: true,
       message: "Orders fetched successfully.",
-      orders: orders,
+      orders: clientOrders,
     });
   } catch (error) {
     console.error("Error Fetch Orders for User :", error);
@@ -193,11 +254,20 @@ export const fetchOrderByUserId = async (req, res) => {
   }
 };
 
-//#region Fetch Orders by SellerID
-export const fetchOrderBySellerId = async (req, res) => {
-  try {
-    const { sellerId } = req.body;
 
+//#region  by SellerID
+export const fetchOrderBySellerId = async (req, res) => {
+  // Get pagination params from query
+  const page = Number(req.query.page) || 1;
+  const limit = Number(req.query.limit) || 5;
+  const skip = (page - 1) * limit;
+  
+  // Get filter option from query (e.g. "Newest", "Oldest", "Update", "Pending", "Cancelled", "Delivered", "Shipped")
+  const filterOption = req.query.filter || ""; 
+
+  try {
+    const { sellerId } = req.params;
+    // console.log("Seller Id:", sellerId);
     if (!sellerId) {
       return res.status(400).json({
         success: false,
@@ -213,12 +283,91 @@ export const fetchOrderBySellerId = async (req, res) => {
       });
     }
 
-    const orders = await Order.find({ seller: sellerId }).populate("items.product");
+    // Build the query condition based on filter option
+    let queryCondition = { seller: sellerId };
+    const lowerOption = filterOption.toLowerCase();
+    if (["pending", "cancelled", "delivered", "shipped"].includes(lowerOption)) {
+      queryCondition.status = lowerOption;
+    }
+
+    // Determine sort order
+    let sortOrder = { createdAt: -1 }; // default "Newest"
+    if (filterOption) {
+      if (lowerOption === "oldest") {
+        sortOrder = { createdAt: 1 };
+      } else if (lowerOption === "update") {
+        sortOrder = { updatedAt: -1 };
+      }
+      // For status filters ("pending", "cancelled", "delivered", "shipped"),
+      // we can continue to sort by "Newest" (createdAt descending).
+    }
+
+    // Count total orders matching the query condition
+    const totalOrders = await Order.countDocuments(queryCondition);
+
+    // Helper function to format product details
+    const formatProduct = (product) => ({
+      id: product._id,
+      title: product.title,
+      price: product.price,
+      thumbnail: product.thumbnail,
+      subtitle: product.subtitle,
+    });
+
+    // Helper function to format an order and include full product details
+    const formatOrder = (order) => ({
+      id: order._id,
+      items: order.items.map(item => ({
+        product: formatProduct(item.product),
+        quantity: item.quantity,
+        price: item.price,
+      })),
+      seller: order.seller,
+      user: order.user,
+      status: order.status,
+      totalAmount: order.totalAmount,
+      totalItems: order.totalItems,
+      shippingAddress: order.shippingAddress,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+    });
+
+    // Fetch orders with pagination, sorting, and populate product details
+    const orders = await Order.find(queryCondition)
+      .sort(sortOrder)
+      .skip(skip)
+      .limit(limit)
+      .populate("items.product")
+      .lean();
+
+    // Format each order
+    const formattedOrders = orders.map(formatOrder);
+
+    // Optionally create a simplified client order format (if needed)
+    const clientOrders = formattedOrders.map(order => {
+      const product = order.items[0]?.product || {};
+      return {
+        id: order.id.toString(),
+        title: product.title,
+        price: product.price,
+        subtitle: product.subtitle,
+        image: product.thumbnail,
+        status: order.status,
+        totalAmount: order.totalAmount,
+        totalItems: order.totalItems,
+        shippingAddress: order.shippingAddress,
+      };
+    });
+
+    // console.log("clientOrders:", JSON.stringify(clientOrders, null, 2));
 
     return res.status(200).json({
       success: true,
       message: "Orders fetched successfully.",
-      orders: orders,
+      orders: clientOrders,
+      totalOrders,
+      currentPage: page,
+      totalPages: Math.ceil(totalOrders / limit),
     });
   } catch (error) {
     console.error("Error Fetch Orders for Seller:", error);
@@ -229,3 +378,8 @@ export const fetchOrderBySellerId = async (req, res) => {
     });
   }
 };
+
+
+
+
+

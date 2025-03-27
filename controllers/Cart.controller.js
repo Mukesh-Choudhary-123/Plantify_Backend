@@ -3,8 +3,12 @@ import User from "../models/User.js";
 
 //#region Add to Cart
 export const addToCart = async (req, res) => {
+  // console.log("add to cart");
   try {
-    const { userId, productId } = req.body;
+    const { id } = req.params;
+    const userId = id;
+    const { productId } = req.body;
+    // console.log("U", userId, " ", "P", productId);
 
     if (!userId || !productId) {
       return res.status(400).json({
@@ -30,7 +34,9 @@ export const addToCart = async (req, res) => {
     }
 
     // Check if product is already in the cart
-    const existingCartItem = user.cart.find((item) => item.product.toString() === productId);
+    const existingCartItem = user.cart.find(
+      (item) => item.product.toString() === productId
+    );
 
     if (existingCartItem) {
       existingCartItem.quantity += 1;
@@ -58,7 +64,9 @@ export const addToCart = async (req, res) => {
 //#region Remove from Cart
 export const removeFromCart = async (req, res) => {
   try {
-    const { userId, productId } = req.body;
+    const { id } = req.params;
+    const userId = id;
+    const { productId } = req.body;
 
     if (!userId || !productId) {
       return res.status(400).json({
@@ -76,7 +84,9 @@ export const removeFromCart = async (req, res) => {
     }
 
     // Remove product from cart
-    user.cart = user.cart.filter((item) => item.product.toString() !== productId);
+    user.cart = user.cart.filter(
+      (item) => item.product.toString() !== productId
+    );
     await user.save();
 
     return res.status(200).json({
@@ -97,7 +107,9 @@ export const removeFromCart = async (req, res) => {
 //#region Update Cart (Increase/Decrease Quantity)
 export const updateCart = async (req, res) => {
   try {
-    const { userId, productId, action } = req.body; // action: 'increase' or 'decrease'
+    const { id } = req.params;
+    const userId = id;
+    const { productId, action } = req.body;
 
     if (!userId || !productId || !action) {
       return res.status(400).json({
@@ -122,7 +134,9 @@ export const updateCart = async (req, res) => {
       });
     }
 
-    const cartItem = user.cart.find((item) => item.product.toString() === productId);
+    const cartItem = user.cart.find(
+      (item) => item.product.toString() === productId
+    );
 
     if (!cartItem) {
       return res.status(400).json({
@@ -136,7 +150,9 @@ export const updateCart = async (req, res) => {
     } else if (action === "decrease") {
       cartItem.quantity -= 1;
       if (cartItem.quantity <= 0) {
-        user.cart = user.cart.filter((item) => item.product.toString() !== productId);
+        user.cart = user.cart.filter(
+          (item) => item.product.toString() !== productId
+        );
       }
     } else {
       return res.status(400).json({
@@ -161,12 +177,24 @@ export const updateCart = async (req, res) => {
     });
   }
 };
+const formatCartData = (cartItems) => {
+  return cartItems.map((item) => ({
+    id: item._id,
+    sellerId: item.product.seller,
+    productId: item.product._id, // Added for deletion
+    title: item.product.title,
+    price: item.product.price,
+    quantity: item.quantity,
+    subtitle: item.product.subtitle,
+    image: item.product.thumbnail,
+  }));
+};
 
-//#region Fetch Cart for User
+//#region fetchCart
 export const fetchCart = async (req, res) => {
   try {
-    const { userId } = req.body;
-
+    const { id } = req.params;
+    const userId = id;
     if (!userId) {
       return res.status(400).json({
         success: false,
@@ -174,7 +202,19 @@ export const fetchCart = async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId).populate("cart.product");
+    // Populate the cart with product details, and within each product, populate the seller
+    // only if the seller is approved (isApproved: true)
+    const user = await User.findById(userId)
+      .populate({
+        path: "cart.product",
+        select: "seller title subtitle price thumbnail",
+        populate: {
+          path: "seller",
+          match: { isApproved: true },
+         
+        },
+      })
+      .lean();
 
     if (!user) {
       return res.status(404).json({
@@ -183,10 +223,18 @@ export const fetchCart = async (req, res) => {
       });
     }
 
+    // Filter out cart items whose product's seller is not approved
+    const approvedCartItems = user.cart.filter(
+      (item) => item.product && item.product.seller
+    );
+
+    // Format the cart data using your existing helper function
+    const formattedCart = formatCartData(approvedCartItems);
+
     return res.status(200).json({
       success: true,
       message: "Cart fetched successfully.",
-      cart: user.cart,
+      cart: formattedCart,
     });
   } catch (error) {
     console.error("Error Fetching Cart: ", error);
@@ -197,3 +245,4 @@ export const fetchCart = async (req, res) => {
     });
   }
 };
+

@@ -7,8 +7,8 @@ import {
 
 const router = express.Router();
 
-router.route("/").post(addToWishlist);
-router.route("/").delete(removeFromWishlist);
-router.route("/").get(fetchWishlist);
+router.route("/:id").post(addToWishlist);
+router.route("/:id").delete(removeFromWishlist);
+router.route("/:id").get(fetchWishlist);
 
 export default router;

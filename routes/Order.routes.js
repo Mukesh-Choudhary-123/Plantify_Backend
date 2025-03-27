@@ -8,9 +8,12 @@ import {
 
 const router = express.Router();
 
-router.route("/").post(createOrder);
-router.route("/").put(updateOrder);
-router.route("/").get(fetchOrderBySellerId);
-router.route("/").get(fetchOrderByUserId);
+router.route("/:id").post(createOrder);
+
+router.route("/:orderId").put(updateOrder);
+
+router.route("/user/:userId").get(fetchOrderByUserId);
+
+router.route("/seller/:sellerId").get(fetchOrderBySellerId);
 
 export default router;

@@ -64,7 +64,9 @@ export const login = async (req,res) => {
       });
     }
 
-    const isPasswordMatch = bcrypt.compare(password, seller.password);
+    const isPasswordMatch =await bcrypt.compare(password, seller.password);
+
+    // console.log("isPassword :- ",isPasswordMatch)
 
     if (!isPasswordMatch) {
       return res.status(403).json({
@@ -79,6 +81,12 @@ export const login = async (req,res) => {
       { expiresIn: "1d" }
     );
       
+    const sellerData = {
+      sellerId:seller.id,
+      sellername: seller.username,
+      email:seller.email
+    }
+
     return res
     .status(200)
     .cookie("token", token, {
@@ -88,7 +96,10 @@ export const login = async (req,res) => {
     })
     .json({
       success: true,
-      message: `Welcome back ${seller.username}`,
+      sellerData :sellerData,
+      isApproved: seller.isApproved,
+      token:token,
+      message: `Welcome back ${seller?.username}`,
     });
       
   } catch (error) {
@@ -99,6 +110,7 @@ export const login = async (req,res) => {
   }
 };
 
+//#region logout
 export const logout = async (req, res) => {
     try {
         return res.status(200).cookie("token", "", { maxAge: 0 }).json({

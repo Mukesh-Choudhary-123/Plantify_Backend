@@ -1,5 +1,8 @@
 import express from "express";
+import morgan from 'morgan'
+import logger from './logs/logger.js'
 import dotenv from "dotenv";
+import cors from 'cors'
 import bodyParser from "body-parser";
 import cookieParser from "cookie-parser";
 import connectDB from "./config/db.js";
@@ -11,16 +14,29 @@ import cartRouter from "./routes/Cart.routes.js";
 import orderRouter from "./routes/Order.routes.js";
 import wishlistRouter from "./routes/Wishlist.routes.js";
 
+
 const app = express();
+app.use(
+  morgan('combined', {
+    stream: {
+      write: (message) => logger.info(message.trim()),
+    },
+  })
+);
+
 dotenv.config();
 connectDB();
 const port = process.env.PORT || 5000;
+
+app.use(cors({
+  origin: "http://localhost:5173",
+  credentials: true
+}))
 
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// ✅ Fix: Add `/` before route prefixes
 app.use("/api/v1/user", userRouter);
 app.use("/api/v1/seller", sellerRouter);
 app.use("/api/v1/admin", adminRouter);

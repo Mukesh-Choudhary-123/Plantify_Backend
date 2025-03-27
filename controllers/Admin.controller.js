@@ -1,6 +1,7 @@
 import bcrypt from "@node-rs/bcrypt";
 import Admin from "../models/Admin.js";
 import jwt from "jsonwebtoken";
+import Seller from "../models/Seller.js";
 
 //#region Create Admin
 
@@ -46,6 +47,9 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // console.log("Email :- ", email);
+    // console.log("Password :- ",password)
+
     if (!email || !password) {
       return res.status(403).json({
         success: false,
@@ -84,6 +88,12 @@ export const login = async (req, res) => {
       })
       .json({
         success: true,
+        token,
+        admin: {
+          id: admin._id,
+          username: admin.username,
+          email: admin.email,
+        },
         message: `Welcome back ${admin.username}`,
       });
   } catch (error) {
@@ -106,6 +116,59 @@ export const logout = async (req,res) => {
     return res.status(400).json({
       success: false,
       message: "Error while logout",
+    });
+  }
+};
+
+
+//#region fetchAllSeller
+export const fetchAllSeller = async (req, res) => {
+  try {
+    const sellers = await Seller.find({}, '_id email username isApproved');
+    return res.status(200).json({
+      success: true,
+      message: "All Seller fetch Successfully",
+      data: sellers,
+    });
+  } catch (error) {
+    console.error("Error while fetching sellers:", error);
+    return res.status(400).json({
+      success: false,
+      message: "Error while fetching all sellers",
+    });
+  }
+};
+
+
+//#region updateSeller
+export const updateSeller = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isApproved } = req.body;
+
+    const updatedSeller = await Seller.findByIdAndUpdate(
+      id,
+      { isApproved },
+      { new: true } 
+    );
+
+    if (!updatedSeller) {
+      return res.status(404).json({
+        success: false,
+        message: "Seller not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Seller approval updated successfully",
+      data: updatedSeller,
+    });
+  } catch (error) {
+    console.error("Error while updating seller:", error);
+    return res.status(400).json({
+      success: false,
+      message: "Error while updating seller approval",
     });
   }
 };
