@@ -4,7 +4,6 @@ import Product from "../models/Product.js";
 import Seller from "../models/Seller.js";
 import mongoose, { Schema } from "mongoose";
 
-
 //#region Create Order
 export const createOrder = async (req, res) => {
   try {
@@ -12,6 +11,7 @@ export const createOrder = async (req, res) => {
     const userId = id;
     const { items, shippingAddress } = req.body;
 
+    // Validate request
     if (!userId || !items || items.length === 0 || !shippingAddress) {
       return res.status(400).json({
         success: false,
@@ -19,21 +19,25 @@ export const createOrder = async (req, res) => {
       });
     }
 
+    console.log("📌 Items Received:", JSON.stringify(items, null, 2));
+
     const user = await User.findById(userId);
     if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found." });
+      return res.status(404).json({ success: false, message: "User not found." });
     }
 
     // Group items by sellerId
     const itemsBySeller = {};
     items.forEach((item) => {
-      if (!itemsBySeller[item.sellerId]) {
-        itemsBySeller[item.sellerId] = [];
+      const sellerId = item.sellerId._id.toString(); // Extract seller's ObjectId as a string
+
+      if (!itemsBySeller[sellerId]) {
+        itemsBySeller[sellerId] = [];
       }
-      itemsBySeller[item.sellerId].push(item);
+      itemsBySeller[sellerId].push(item);
     });
+
+    console.log("📌 Grouped Items by Seller:", JSON.stringify(itemsBySeller, null, 2));
 
     const orders = [];
 
@@ -43,6 +47,16 @@ export const createOrder = async (req, res) => {
       let totalItems = 0;
       const orderItems = [];
       const sellerItems = itemsBySeller[sellerId];
+
+      console.log("✅ Processing Seller ID:", sellerId);
+
+      // Validate if sellerId is a valid ObjectId
+      if (!mongoose.Types.ObjectId.isValid(sellerId)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid seller ID: ${sellerId}`,
+        });
+      }
 
       // Process each item for the seller
       for (const item of sellerItems) {
@@ -68,12 +82,13 @@ export const createOrder = async (req, res) => {
       // Create and save the order for the seller
       const order = new Order({
         user: userId,
-        seller: sellerId,
+        seller: new mongoose.Types.ObjectId(sellerId), // Ensure it's an ObjectId
         items: orderItems,
         totalAmount,
         totalItems,
         shippingAddress,
       });
+
       await order.save();
       orders.push(order);
     }
@@ -87,8 +102,9 @@ export const createOrder = async (req, res) => {
       message: "Orders placed successfully.",
       orders,
     });
+
   } catch (error) {
-    console.error("Error Creating Order:", error);
+    console.error("❌ Error Creating Order:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error.",
@@ -101,7 +117,7 @@ export const createOrder = async (req, res) => {
 export const updateOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const {  status } = req.body;
+    const { status } = req.body;
 
     // console.log("orderId: ", orderId)
     // console.log("status: ",status)
@@ -194,51 +210,61 @@ export const fetchOrderByUserId = async (req, res) => {
         message: "User not found.",
       });
     }
-    
+
+    // Helper function to format the product details
     const formatProduct = (product) => ({
-      id: product._id, // _id becomes id
+      id: product._id.toString(), // convert _id to string
       title: product.title,
-      price: product.price,
-      thumbnail: product.thumbnail,
+      prices: product.price,
       subtitle: product.subtitle,
+      image: product.thumbnail,
     });
-    
-    const formatOrder = (order) => ({
-      id: order._id, 
-      items: order.items.map(item => ({
-        ...item,
-        product: formatProduct(item.product), // apply product formatting
-      })),
-      seller: order.seller,
-      status: order.status,
-      totalAmount: order.totalAmount,
-      totalItems: order.totalItems,
-      user: order.user,
-    });
-    
+
+    // Fetch orders and populate the product details from the items array
     const orders = await Order.find({ user: userId })
-    .sort({ createdAt: -1 }) // sort descending by createdAt
-    .populate("items.product")
-    .lean();
-  
-    
-    const formattedOrders = orders.map(formatOrder);
-    
-    const clientOrders = formattedOrders.map(order => {
-      const product = order.items[0].product;
-      return {
-        id: order.id.toString(), 
-        title: product.title,
-        prices: product.price,   
-        subtitle: product.subtitle,
-        image: product.thumbnail,
+      .sort({ createdAt: -1 })
+      .populate("items.product")
+      .lean();
+
+    // Format orders so that each order groups its items together
+    const clientOrders = orders.map((order) => {
+      // Map over each item to include product info and item quantity
+      const items = order.items.map((item) => ({
+        id: order._id.toString(),
+        ...formatProduct(item.product),
         status: order.status,
+        quantity: item.quantity,
+      }));
+      
+      return {
+        orderId: order._id.toString(),
+        items,
         totalAmount: order.totalAmount,
         totalItems: order.totalItems,
       };
     });
-    
-    // console.log("clientOrders :- ", clientOrders);
+
+    /*
+      Depending on your client’s needs you can send:
+      - A flat array of items across all orders, or
+      - An array grouped by order
+      For example, a flat mapping would look like:
+      
+      const flatClientOrders = orders.flatMap((order) =>
+        order.items.map((item) => ({
+          id: order._id.toString(),
+          ...formatProduct(item.product),
+          status: order.status,
+          totalAmount: order.totalAmount,
+          totalItems: order.totalItems,
+          quantity: item.quantity,
+        }))
+      );
+      
+      In this update, we’re grouping by order.
+    */
+
+    console.log("Grouped Client Orders: ", clientOrders);
     return res.status(200).json({
       success: true,
       message: "Orders fetched successfully.",
@@ -261,9 +287,9 @@ export const fetchOrderBySellerId = async (req, res) => {
   const page = Number(req.query.page) || 1;
   const limit = Number(req.query.limit) || 5;
   const skip = (page - 1) * limit;
-  
+
   // Get filter option from query (e.g. "Newest", "Oldest", "Update", "Pending", "Cancelled", "Delivered", "Shipped")
-  const filterOption = req.query.filter || ""; 
+  const filterOption = req.query.filter || "";
 
   try {
     const { sellerId } = req.params;
@@ -286,7 +312,9 @@ export const fetchOrderBySellerId = async (req, res) => {
     // Build the query condition based on filter option
     let queryCondition = { seller: sellerId };
     const lowerOption = filterOption.toLowerCase();
-    if (["pending", "cancelled", "delivered", "shipped"].includes(lowerOption)) {
+    if (
+      ["pending", "cancelled", "delivered", "shipped"].includes(lowerOption)
+    ) {
       queryCondition.status = lowerOption;
     }
 
@@ -317,7 +345,7 @@ export const fetchOrderBySellerId = async (req, res) => {
     // Helper function to format an order and include full product details
     const formatOrder = (order) => ({
       id: order._id,
-      items: order.items.map(item => ({
+      items: order.items.map((item) => ({
         product: formatProduct(item.product),
         quantity: item.quantity,
         price: item.price,
@@ -344,7 +372,7 @@ export const fetchOrderBySellerId = async (req, res) => {
     const formattedOrders = orders.map(formatOrder);
 
     // Optionally create a simplified client order format (if needed)
-    const clientOrders = formattedOrders.map(order => {
+    const clientOrders = formattedOrders.map((order) => {
       const product = order.items[0]?.product || {};
       return {
         id: order.id.toString(),
@@ -378,8 +406,3 @@ export const fetchOrderBySellerId = async (req, res) => {
     });
   }
 };
-
-
-
-
-
