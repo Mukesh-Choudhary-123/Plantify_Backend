@@ -46,8 +46,14 @@ app.use("/api/v1/order", orderRouter);
 app.use("/api/v1/wishlist", wishlistRouter);
 
 app.get("/", (req, res) => {
-  res.send("Hello World!");
+  res.json({
+    message: "Welcome to the Plantify API!",
+    description: "This API powers the Plantify platform, handling user authentication, product management, and order processing.",
+    status: "Running",
+    version: "1.0.0"
+  });
 });
+
 
 app.listen(port, () => {
   console.log(`Server working on http://localhost:${port}`);
