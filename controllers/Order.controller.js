@@ -293,7 +293,7 @@ export const fetchOrderBySellerId = async (req, res) => {
 
   try {
     const { sellerId } = req.params;
-    // console.log("Seller Id:", sellerId);
+    console.log("Seller Id:", sellerId);
     if (!sellerId) {
       return res.status(400).json({
         success: false,
@@ -334,22 +334,36 @@ export const fetchOrderBySellerId = async (req, res) => {
     const totalOrders = await Order.countDocuments(queryCondition);
 
     // Helper function to format product details
-    const formatProduct = (product) => ({
-      id: product._id,
-      title: product.title,
-      price: product.price,
-      thumbnail: product.thumbnail,
-      subtitle: product.subtitle,
-    });
+    const formatProduct = (product) => {
+      if (!product) {
+        return {
+          id: null,
+          title: "Unknown Product",
+          price: 0,
+          thumbnail: "",
+          subtitle: "",
+        };
+      }
+      return {
+        id: product._id,
+        title: product.title,
+        price: product.price,
+        thumbnail: product.thumbnail,
+        subtitle: product.subtitle,
+      };
+    };
+    
 
     // Helper function to format an order and include full product details
     const formatOrder = (order) => ({
       id: order._id,
-      items: order.items.map((item) => ({
-        product: formatProduct(item.product),
-        quantity: item.quantity,
-        price: item.price,
-      })),
+      items: order.items
+        .filter((item) => item.product)  // Only include items with valid products
+        .map((item) => ({
+          product: formatProduct(item.product),
+          quantity: item.quantity,
+          price: item.price,
+        })),
       seller: order.seller,
       user: order.user,
       status: order.status,
@@ -359,6 +373,7 @@ export const fetchOrderBySellerId = async (req, res) => {
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
     });
+    
 
     // Fetch orders with pagination, sorting, and populate product details
     const orders = await Order.find(queryCondition)
@@ -387,7 +402,7 @@ export const fetchOrderBySellerId = async (req, res) => {
       };
     });
 
-    // console.log("clientOrders:", JSON.stringify(clientOrders, null, 2));
+    console.log("clientOrders:", JSON.stringify(clientOrders, null, 2));
 
     return res.status(200).json({
       success: true,
