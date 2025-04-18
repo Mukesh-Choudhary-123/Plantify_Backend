@@ -383,10 +383,8 @@ export const fetchOrderBySellerId = async (req, res) => {
       .populate("items.product")
       .lean();
 
-    // Format each order
     const formattedOrders = orders.map(formatOrder);
 
-    // Optionally create a simplified client order format (if needed)
     const clientOrders = formattedOrders.map((order) => {
       const product = order.items[0]?.product || {};
       return {
