@@ -124,10 +124,12 @@ export const logout = async (req,res) => {
 //#region fetchAllSeller
 export const fetchAllSeller = async (req, res) => {
   try {
-    const sellers = await Seller.find({}, '_id email username isApproved');
+    const sellers = await Seller.find({}, '_id email username isApproved')
+      .sort({ createdAt: -1 }); 
+
     return res.status(200).json({
       success: true,
-      message: "All Seller fetch Successfully",
+      message: "All sellers fetched successfully",
       data: sellers,
     });
   } catch (error) {
@@ -138,6 +140,7 @@ export const fetchAllSeller = async (req, res) => {
     });
   }
 };
+
 
 
 //#region updateSeller
